@@ -1,6 +1,7 @@
 importScripts(
   'https://cdn.jsdelivr.net/npm/rollup@2.60.1/dist/rollup.browser.js',
   'https://cdn.jsdelivr.net/npm/path-browser@2.2.1/path.min.js',
+  'https://cdn.jsdelivr.net/npm/@babel/standalone@7.16.4/babel.min.js',
 );
 
 const BUILTIN_PREFIX = '@bext/';
@@ -35,16 +36,37 @@ const bext = ({ builtins, meta, env }) => {
       }
       return null;
     },
+    transform(code, id) {
+      return id === '@bext/entry'
+        ? Babel.transform(code, {
+            plugins: [
+              [
+                'transform-react-jsx',
+                {
+                  pragma: 'h',
+                  pragmaFrag: 'Fragment',
+                },
+              ],
+            ],
+          }).code
+        : null;
+    },
     renderChunk(code) {
-      const comments = [];
-      this.parse(code, {
-        onComment: comments,
-      });
-      const sortedComments = comments.sort((a, b) => b.start - a.start);
-      for (const { start, end } of sortedComments) {
-        code = code.slice(0, start) + code.slice(end);
-      }
-      return code;
+      return `(function() {
+${
+  Babel.transform(code, {
+    presets: [
+      [
+        'env',
+        {
+          targets: 'chrome >= 70',
+        },
+      ],
+    ],
+    comments: false,
+  }).code
+}
+})();`;
     },
   };
 };
@@ -88,6 +110,6 @@ export async function compile(payload) {
     input: '@bext/entry',
     plugins: [bext(payload), url()],
   });
-  const { output } = await bundle.generate({ format: 'iife' });
+  const { output } = await bundle.generate({ format: 'cjs' });
   return output[0].code;
 }
